@@ -7,26 +7,16 @@ import cv2
 from robot import Robot
 import assignment1 as a1
 import numpy as np
-from MapDisplayThread import MapDisplayThread
-import display
+from MapHelper import MapHelper
 
 
 def Run(robot):
     # Open the map image and create a new thread for display
-    image = cv2.imread("field.png", cv2.IMREAD_UNCHANGED)
-    map_thread = MapDisplayThread(1, "map_thread", image)
-    map_thread.start()
-
-    # Testing updating the image in the thread, seems to be working fine
-    # Can remove this code later on
-    # new_image = image.copy()
-    # new_image = display.draw_robot((100, 400), -45, image)
-    # map_thread.set_image(new_image)
-
-    do_robot_stuff(robot, map_thread, image)
+    map_helper = MapHelper()
+    do_robot_stuff(robot, map_helper)
 
 
-def do_robot_stuff(robot, map_thread, map_image):
+def do_robot_stuff(robot, map_helper):
     global DEF_LARGE_VAL
     DEF_LARGE_VAL = 999999
 
@@ -41,7 +31,9 @@ def do_robot_stuff(robot, map_thread, map_image):
     # Video writer for debugging
     # out = cv2.VideoWriter('outpy.avi', cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 4, (frame_width, frame_height))
     while True:
-        # rotate the bot in the direction of goal
+
+        # update the map with the current rotation
+        map_helper.update_rotation(angle_to_goal)
 
         # find obstacles in current direction
         image = robot.get_image()
