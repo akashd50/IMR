@@ -80,6 +80,14 @@ def draw_obstacle(start, end, img):
     return img
 
 
+def show_map_window(image):
+    """
+        Draw the map image
+        args:
+                image : image of the map
+    """
+    cv2.imshow(_WINDOW_NAME, image)
+
 
 def test():
     """
