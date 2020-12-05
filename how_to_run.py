@@ -7,16 +7,26 @@ import cv2
 from robot import Robot
 import assignment1 as a1
 import numpy as np
-import time
-import threading
+from MapDisplayThread import MapDisplayThread
+import display
 
 
 def Run(robot):
-    # Get image and save image
-    do_robot_stuff(robot)
+    # Open the map image and create a new thread for display
+    image = cv2.imread("field.png", cv2.IMREAD_UNCHANGED)
+    map_thread = MapDisplayThread(1, "map_thread", image)
+    map_thread.start()
+
+    # Testing updating the image in the thread, seems to be working fine
+    # Can remove this code later on
+    # new_image = image.copy()
+    # new_image = display.draw_robot((100, 400), -45, image)
+    # map_thread.set_image(new_image)
+
+    do_robot_stuff(robot, map_thread, image)
 
 
-def do_robot_stuff(robot):
+def do_robot_stuff(robot, map_thread, map_image):
     global DEF_LARGE_VAL
     DEF_LARGE_VAL = 999999
 
@@ -74,7 +84,7 @@ def do_robot_stuff(robot):
                 rotate_z(robot, angle_to_rotate, 1)
                 angle_to_goal += angle_to_rotate + (angle_to_rotate * 0.1)
                 rotated_due_to_obstacle = True
-                rotated_due_to_obstacle_dir = angle_to_rotate/abs(angle_to_rotate)
+                rotated_due_to_obstacle_dir = angle_to_rotate / abs(angle_to_rotate)
 
             # If we ever see a potential collide-able obstacle in the current iteration,
             # we always skip the entire rest of loop
@@ -131,7 +141,6 @@ def do_robot_stuff(robot):
     # out.release()
     # print("Angle to goal: ", angle_to_goal)
     # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
 
 
 def find_obstacles_in_collision_range(obstacle_data, rows, cols):
@@ -150,7 +159,7 @@ def find_obstacles_in_collision_range(obstacle_data, rows, cols):
         height = obstacle.height
 
         size_ratio = float(size) / float(frame_size)
-        height_ratio = float(height)/float(rows)
+        height_ratio = float(height) / float(rows)
         center_normalized_x, center_angle = find_normalized_pos_and_angle(x, y, rows, cols)
         closest_x_to_view = find_closest_obstacle_x_to_view(obstacle, rows, cols)
         normalized_x, angle = find_normalized_pos_and_angle(closest_x_to_view, y, rows, cols)
@@ -234,6 +243,11 @@ def rotate_z(robot, deg_per_sec, seconds):
     for i in xrange(0, iter_time):
         robot.publish_twist(twist)
         rate.sleep()
+
+    # instantly stops rotation as soon as the loop finishes
+    # this allows to avoid the discrepancies in extra rotation
+    twist.angular.z = 0
+    robot.publish_twist(twist)
 
 
 def move_forward(robot, meters_per_sec, seconds):
@@ -323,4 +337,3 @@ class Obstacle:
 if __name__ == '__main__':
     robot = Robot()
     Run(robot)
-
