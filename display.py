@@ -66,6 +66,26 @@ def generate_obstacle_point(start, end):
     return start, end, top_right, top_left
 
 
+def translate_point(current_location, translation, current_angle):
+    """
+        Translates the current location in the direction of the current angle
+        by translation amount (scaled appropriately to the correct ratio)
+
+        :param current_location: (x, y)
+        :param translation: (float) e.g. 0.5, 1
+        :param current_angle: (a) current angle of the robot
+        :return: (x, y)
+    """
+    adjusted_angle = math.radians(current_angle + 90)
+    translation_in_pixels = translation * 100
+    x, y = current_location
+    pos_x = x + translation_in_pixels * math.cos(adjusted_angle)
+    pos_y = y - translation_in_pixels * math.sin(adjusted_angle)
+    return pos_x, pos_y
+
+
+if __name__ == '__main__':
+    translate_point((150, 300), 1, 0)
 
 
 def draw_obstacle(start, end, img):
