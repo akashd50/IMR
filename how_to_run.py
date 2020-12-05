@@ -13,6 +13,9 @@ from MapHelper import MapHelper
 def Run(robot):
     # Open the map image and create a new thread for display
     map_helper = MapHelper()
+    # defaulting the translation for now
+    map_helper.set_robot_translation((150, 600))
+    map_helper.refresh_map()
     do_robot_stuff(robot, map_helper)
 
 
@@ -31,11 +34,7 @@ def do_robot_stuff(robot, map_helper):
     # Video writer for debugging
     # out = cv2.VideoWriter('outpy.avi', cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 4, (frame_width, frame_height))
     while True:
-
-        # update the map with the current rotation
-        map_helper.update_rotation(angle_to_goal)
-
-        # find obstacles in current direction
+        # get the image from the robot
         image = robot.get_image()
 
         # pass the image to extract the obstacle and goal data
@@ -64,16 +63,16 @@ def do_robot_stuff(robot, map_helper):
                 if (abs(current_obstacle.closest_x_to_center_nrm) > 0.8) & (current_obstacle.size_ratio < 0.2):
                     # check if there's enough space to pass through
                     # move straight
-                    move_forward(robot, 0.2, 1)
+                    move_forward(robot, 0.2, 1, map_helper)
                 else:
                     # otherwise keep rotating in the same direction
                     angle_to_rotate = rotated_due_to_obstacle_dir * 10
-                    rotate_z(robot, angle_to_rotate, 1)
+                    rotate_z(robot, angle_to_rotate, 1, map_helper)
                     angle_to_goal += angle_to_rotate + (angle_to_rotate * 0.1)
             else:
                 # otherwise find the angle of rotation for the current obstacle and rotate the robot
                 angle_to_rotate = get_angle_to_rotate(current_obstacle)
-                rotate_z(robot, angle_to_rotate, 1)
+                rotate_z(robot, angle_to_rotate, 1, map_helper)
                 angle_to_goal += angle_to_rotate + (angle_to_rotate * 0.1)
                 rotated_due_to_obstacle = True
                 rotated_due_to_obstacle_dir = angle_to_rotate / abs(angle_to_rotate)
@@ -83,7 +82,7 @@ def do_robot_stuff(robot, map_helper):
             continue
         elif num_obs_in_coll_range >= 2:
             angle_to_rotate = get_angle_to_rotate_multiple(obstacles_in_collision_range)
-            rotate_z(robot, angle_to_rotate, 1)
+            rotate_z(robot, angle_to_rotate, 1, map_helper)
             angle_to_goal += angle_to_rotate + (angle_to_rotate * 0.1)
             rotated_due_to_obstacle = True
             rotated_due_to_obstacle_dir = angle_to_rotate / abs(angle_to_rotate)
@@ -97,11 +96,11 @@ def do_robot_stuff(robot, map_helper):
             if rotated_due_to_obstacle:
                 # if the robot previously rotated due to an obstacle and there's no obstacle in the path,
                 # move forward first
-                move_forward(robot, 0.5, 1)
+                move_forward(robot, 0.5, 1, map_helper)
                 rotated_due_to_obstacle = False
             else:
                 # else continue rotating to find the goal
-                rotate_z(robot, 40, 1)
+                rotate_z(robot, 40, 1, map_helper)
                 angle_to_goal += 40 + 40 * 0.1
         else:
             # if goal is visible
@@ -110,7 +109,7 @@ def do_robot_stuff(robot, map_helper):
                 # if the robot previously rotated due to an obstacle and there's no obstacle in the path,
                 # move forward first
 
-                move_forward(robot, 0.2, 1)
+                move_forward(robot, 0.2, 1, map_helper)
                 rotated_due_to_obstacle = False
             else:
                 # else correct the direction to the goal or move forward
@@ -123,10 +122,10 @@ def do_robot_stuff(robot, map_helper):
                 # if the angle to goal is between 10 degrees move forward otherwise correct direction and continue
                 if abs(r_angle) > 5:
                     angle_to_rotate = r_angle
-                    rotate_z(robot, angle_to_rotate * 0.8, 1)
+                    rotate_z(robot, angle_to_rotate * 0.8, 1, map_helper)
                     angle_to_goal += angle_to_rotate * 0.8 + (angle_to_rotate * 0.8) * 0.1
                 else:
-                    move_forward(robot, 0.2, 1)
+                    move_forward(robot, 0.2, 1, map_helper)
 
         # out.write(frame_for_drawing)
 
@@ -226,14 +225,21 @@ def find_normalized_pos_and_angle(x, y, rows, cols):
     return normalized_x, angle
 
 
-def rotate_z(robot, deg_per_sec, seconds):
+def rotate_z(robot, deg_per_sec, seconds, map_helper):
     # helper function for rotating the robot forward
     rate = rospy.Rate(10)
     twist = Twist()
     twist.angular.z = radians(deg_per_sec)
     iter_time = 10 * seconds
+    total_rotation = deg_per_sec * seconds
+    rot_per_iter = total_rotation/iter_time
     for i in xrange(0, iter_time):
         robot.publish_twist(twist)
+
+        # update map
+        map_helper.update_robot_rotation(rot_per_iter)
+        map_helper.refresh_map()
+
         rate.sleep()
 
     # instantly stops rotation as soon as the loop finishes
@@ -242,15 +248,26 @@ def rotate_z(robot, deg_per_sec, seconds):
     robot.publish_twist(twist)
 
 
-def move_forward(robot, meters_per_sec, seconds):
+def move_forward(robot, meters_per_sec, seconds, map_helper):
     # helper function for moving the robot forward
     rate = rospy.Rate(10)
     twist = Twist()
     twist.linear.x = meters_per_sec
     iter_time = 10 * seconds
+    total_translation = meters_per_sec * seconds
+    translation_per_iter = total_translation/iter_time
     for i in xrange(0, iter_time):
         robot.publish_twist(twist)
+
+        # update map
+        map_helper.translate_robot(translation_per_iter)
+        map_helper.refresh_map()
+
         rate.sleep()
+
+    # instantly stops translation as soon as the loop finishes
+    twist.linear.x = 0
+    robot.publish_twist(twist)
 
 
 def photo_mode(image):
