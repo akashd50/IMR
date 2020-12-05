@@ -9,18 +9,32 @@ class MapDisplayThread(threading.Thread):
         self.thread_id = thread_id
         self.name = name
         self.image = image
+        self.paused = False
+        self.pause_cond = threading.Condition(threading.Lock())
 
     def run(self):
         print("Starting thread: ", self.thread_id)
-        display_map(self.image)
+        while True:
+            with self.pause_cond:
+                while self.paused:
+                    self.pause_cond.wait()
 
-    def set_image(self, image):
-        self.image = image
+            display.show_map_window(self.image)
 
+            if cv2.waitKey(1) == ord('q'):
+                break
+        cv2.destroyAllWindows()
 
-def display_map(image):
-    while True:
-        display.show_map_window(image)
-        if cv2.waitKey(0):
-            break
-    cv2.destroyAllWindows()
+    def set_image(self, img):
+        self.pause()
+        self.image = img
+        self.resume()
+
+    def pause(self):
+        self.paused = True
+        self.pause_cond.acquire()
+
+    def resume(self):
+        self.paused = False
+        self.pause_cond.notify()
+        self.pause_cond.release()
