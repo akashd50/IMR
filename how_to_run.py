@@ -296,7 +296,8 @@ def photo_mode(image):
 
     # Not Doing line detection since we don't need it for this assignment
 
-    # frame_for_drawing = draw_field(frame, obstacle_contours, horizon_height, outer_field_edges, frame_for_drawing)
+    frame_for_drawing, goal_lines, outer_lines, mid_lines, unclassified_lines = a1.draw_field(frame, obstacle_contours, horizon_height, outer_field_edges, frame_for_drawing)
+
     return frame_for_drawing, obstacle_objects, [pos_x_blue, pos_y_blue, blue_area]
 
 
