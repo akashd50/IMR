@@ -9,8 +9,6 @@ def main():
     print(cv2.__version__)
     cv2.namedWindow("frame")
     cv2.setMouseCallback("frame", mouse_callback)
-    global DEF_LARGE_VAL
-    DEF_LARGE_VAL = 999999
     photo_mode()
 
 
@@ -241,6 +239,18 @@ def extract_field_coordinates(approx_coords):
 
 
 def draw_field(frame, obstacle_contours, horizon_height, outer_field_edges, frame_for_drawing):
+    """
+        return
+            :frame_for_drawing - image with lines drawn
+            :(each line represented by [start_x, start_y, end_x, end_y])
+            :goal_lines - list of goal lines
+            :outer_field_lines - list of outer field lines (different from the args: outer_field_edges)
+            :mid_lines - list of possible mid-lines
+            :grouped_lines - list of all other unclassified lines
+    """
+    global DEF_LARGE_VAL
+    DEF_LARGE_VAL = 999999
+
     rows, cols, channels = frame.shape
     fld = cv2.ximgproc.createFastLineDetector()
 
@@ -307,7 +317,7 @@ def draw_field(frame, obstacle_contours, horizon_height, outer_field_edges, fram
         sx, sy, ex, ey = line
         cv2.line(frame_for_drawing, (int(sx), int(sy)), (int(ex), int(ey)), curr_color, 2)
 
-    return frame_for_drawing
+    return frame_for_drawing, [goal_line1, goal_line2], outer_field_lines, mid_lines, grouped_lines
 
 
 def find_goal_lines(lines_list, horizon, rows):
@@ -438,7 +448,13 @@ def has_other_lines_close_by(curr_line, lines_list):
 
 
 def try_and_find_mid_line(outer_line, lines_list):
-    lines_list_copy = lines_list.copy()
+    if lines_list is None:
+        return
+    # lines_list_copy = lines_list.copy()
+    lines_list_copy = []
+    for copy in lines_list:
+        lines_list_copy.append(copy)
+
     lower_bound = 20
     upper_bound = 160
     # for outer_line in outer_lines:
