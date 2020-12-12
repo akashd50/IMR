@@ -50,3 +50,12 @@ class MapHelper:
         new_image = self.map.copy()
         new_image = display.draw_robot(self.robot_translation, self.robot_rotation, new_image)
         self.map_thread.set_image(new_image)
+
+    def get_distance(self, obstacle_height):
+        """
+        given a obstacle_height returns its distance
+        parameters:
+            obstacle_height: obstacle height
+
+        """
+        return (int((199- obstacle_height) / 27))

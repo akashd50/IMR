@@ -7,7 +7,7 @@ _RED = (0, 0, 255)
 _TRIANGLE_HEIGHT =  30
 _TRIANGLE_BASE = 18
 _WINDOW_NAME = "MAPPING"
-_OBSTACLE_SIZE = 40
+_OBSTACLE_SIZE = 50
 
 _IMAGE_HEIGHT = 600
 _IMAGE_WIDTH = 300
@@ -88,14 +88,14 @@ if __name__ == '__main__':
     translate_point((150, 300), 1, 0)
 
 
-def draw_obstacle(start, end, img):
+def draw_obstacle(start, img):
     """
     Draw the obstacle box 
     args: 
             start   : left point
             end     : Right point
     """
-    start, end, top_right, top_left = generate_obstacle_point(start, end)
+    start, end, top_right, top_left = generate_obstacle_point(start, (start[0] + _OBSTACLE_SIZE, start[1] ))
     cv2.fillPoly(img, np.array([[start, end, top_right, top_left]]), _RED)
     return img
 
@@ -108,13 +108,3 @@ def show_map_window(image):
     """
     cv2.imshow(_WINDOW_NAME, image)
 
-
-def test():
-    """
-    Test module functionality
-    """
-    image = cv2.imread("field.png", cv2.IMREAD_UNCHANGED)
-    image = draw_robot((100, 400), -45, image)
-    image = draw_obstacle((100, 350), (100 + _OBSTACLE_SIZE, 350), image)
-    cv2.imshow(_WINDOW_NAME, image)
-    cv2.waitKey(3000)
