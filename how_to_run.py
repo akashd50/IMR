@@ -20,8 +20,8 @@ def Run(robot):
 
 
 def do_robot_stuff(robot, map_helper):
-    global DEF_LARGE_VAL
-    DEF_LARGE_VAL = 999999
+    # global DEF_LARGE_VAL
+    # DEF_LARGE_VAL = 999999
 
     angle_to_goal = 0
     rotated_due_to_obstacle = False
@@ -32,7 +32,7 @@ def do_robot_stuff(robot, map_helper):
     image = robot.get_image()
     frame_height, frame_width, _ = image.shape
     # Video writer for debugging
-    # out = cv2.VideoWriter('outpy.avi', cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 4, (frame_width, frame_height))
+    out = cv2.VideoWriter('outpy.avi', cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 4, (frame_width, frame_height))
     while True:
         # get the image from the robot
         image = robot.get_image()
@@ -68,12 +68,12 @@ def do_robot_stuff(robot, map_helper):
                     # otherwise keep rotating in the same direction
                     angle_to_rotate = rotated_due_to_obstacle_dir * 10
                     rotate_z(robot, angle_to_rotate, 1, map_helper)
-                    angle_to_goal += angle_to_rotate + (angle_to_rotate * 0.1)
+                    angle_to_goal += angle_to_rotate
             else:
                 # otherwise find the angle of rotation for the current obstacle and rotate the robot
                 angle_to_rotate = get_angle_to_rotate(current_obstacle)
                 rotate_z(robot, angle_to_rotate, 1, map_helper)
-                angle_to_goal += angle_to_rotate + (angle_to_rotate * 0.1)
+                angle_to_goal += angle_to_rotate
                 rotated_due_to_obstacle = True
                 rotated_due_to_obstacle_dir = angle_to_rotate / abs(angle_to_rotate)
 
@@ -83,13 +83,12 @@ def do_robot_stuff(robot, map_helper):
         elif num_obs_in_coll_range >= 2:
             angle_to_rotate = get_angle_to_rotate_multiple(obstacles_in_collision_range)
             rotate_z(robot, angle_to_rotate, 1, map_helper)
-            angle_to_goal += angle_to_rotate + (angle_to_rotate * 0.1)
+            angle_to_goal += angle_to_rotate
             rotated_due_to_obstacle = True
             rotated_due_to_obstacle_dir = angle_to_rotate / abs(angle_to_rotate)
             continue
 
         # correct direction
-        # print("Goal Data: ", blue_goal_data)
         if not is_goal_visible:
             # cant find goal
 
@@ -99,21 +98,19 @@ def do_robot_stuff(robot, map_helper):
                 move_forward(robot, 0.5, 1, map_helper)
                 rotated_due_to_obstacle = False
             else:
-                # else continue rotating to find the goal
-                rotate_z(robot, 40, 1, map_helper)
-                angle_to_goal += 40 + 40 * 0.1
+                # if goal is not visible try rotation by the approximate angle to the goal that we are keeping track of
+                if angle_to_goal > 0:
+                    rotate_z(robot, -angle_to_goal, 1, map_helper)
+                    angle_to_goal = 0
         else:
             # if goal is visible
-
             if rotated_due_to_obstacle:
                 # if the robot previously rotated due to an obstacle and there's no obstacle in the path,
                 # move forward first
-
                 move_forward(robot, 0.2, 1, map_helper)
                 rotated_due_to_obstacle = False
             else:
                 # else correct the direction to the goal or move forward
-
                 bottom = [float(cols) / 2, rows]
                 vec_to_goal = [goal_x - bottom[0], abs(goal_y - bottom[1])]
                 normalized_vec = a1.normalize(vec_to_goal)
@@ -123,13 +120,13 @@ def do_robot_stuff(robot, map_helper):
                 if abs(r_angle) > 5:
                     angle_to_rotate = r_angle
                     rotate_z(robot, angle_to_rotate * 0.8, 1, map_helper)
-                    angle_to_goal += angle_to_rotate * 0.8 + (angle_to_rotate * 0.8) * 0.1
+                    angle_to_goal += angle_to_rotate * 0.8
                 else:
                     move_forward(robot, 0.2, 1, map_helper)
 
-        # out.write(frame_for_drawing)
+        out.write(frame_for_drawing)
 
-    # out.release()
+    out.release()
     # print("Angle to goal: ", angle_to_goal)
     # cv2.waitKey(0)
 
@@ -155,16 +152,18 @@ def find_obstacles_in_collision_range(obstacle_data, rows, cols):
         closest_x_to_view = find_closest_obstacle_x_to_view(obstacle, rows, cols)
         normalized_x, angle = find_normalized_pos_and_angle(closest_x_to_view, y, rows, cols)
 
-        size_threshold = frame_size * max(abs(normalized_x), 0.1) * (1.6 - height_ratio)
+        size_threshold = frame_size * max(abs(normalized_x), 0.1) * (1.4 - height_ratio)
         size_threshold_passed = size > size_threshold
-
-        if size_threshold_passed:
+        edge_case_satisfied = (abs(center_normalized_x) > 0.6) & (height_ratio > 0.7)
+        if size_threshold_passed | edge_case_satisfied:
             obstacle.angle = angle
             obstacle.size_ratio = size_ratio
             obstacle.center_x_nrm = center_normalized_x
             obstacle.closest_x_to_center = closest_x_to_view
             obstacle.closest_x_to_center_nrm = normalized_x
             obstacles_in_collision_range.append(obstacle)
+            if edge_case_satisfied:
+                obstacle.edge_case = True
 
     return obstacles_in_collision_range
 
@@ -176,6 +175,9 @@ def get_angle_to_rotate(obstacle_data):
     additional_angle_offset = 0
     if (abs(obstacle_data.size_ratio) > 0.25) & (abs(obstacle_data.center_x_nrm) > 0.6):
         additional_angle_offset = 20
+
+    if obstacle_data.edge_case:
+        additional_angle_offset = 10
 
     if obstacle_data.center_x_nrm > 0:
         return 10 + additional_angle_offset
@@ -192,6 +194,10 @@ def get_angle_to_rotate_multiple(obstacles):
 
     if len(obstacles) > 2:
         obstacles.sort(size_sort)
+
+    for obs in obstacles:
+        if obs.edge_case:
+            return get_angle_to_rotate(obs)
 
     obs1 = obstacles[0]
     obs2 = obstacles[1]
@@ -342,6 +348,7 @@ class Obstacle:
 
     def __init__(self, position_data):
         self.center_x, self.center_y, self.area, self.width, self.height = position_data
+        self.edge_case = False
 
 
 if __name__ == '__main__':
