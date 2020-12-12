@@ -1,7 +1,7 @@
 import display
 import cv2
 from MapDisplayThread import MapDisplayThread
-
+from obstacle import LEFT, CENTRE, RIGHT, IMAGE_CENTRE, Obstacle
 
 class MapHelper:
     _FIELD_IMAGE = "field.png"
@@ -59,3 +59,35 @@ class MapHelper:
 
         """
         return (int((199- obstacle_height) / 27))
+
+    def get_horizontal_deflection_from_centre(self, obstacle):
+        """
+            calculates how far the obstacle is from the cenre
+            :param 
+                obstacle: an obstacle object
+        """
+        # delta_x is the distance of closest x coordinate of obstacle from image centre,
+        #  it is a absolute value
+        delta_x = abs(IMAGE_CENTRE - obstacle.closest_x_to_center)
+        
+        # We define the delta with respect to obstacle height, which we regard as constant
+        delta_x_wrt_height = delta_x / obstacle.height
+
+        if obstacle.orientation() == LEFT:
+            # (_IMAGE_WIDTH / 2) x = x coodrdinate of image centre or 320 here,
+            # display._OBSTACLE_SIZE = 50 set in display.py, so here we do a conversion  
+            x_ = (_IMAGE_WIDTH / 2) - delta_x_wrt_height * display._OBSTACLE_SIZE
+            # since in display class we only need teh start we use this to get the start x corodinate
+            x_ -= display._OBSTACLE_SIZE
+        elif obstacle.orientation() == RIGHT:
+             # (_IMAGE_WIDTH / 2) x = x coodrdinate of image centre or 320 here,
+            # display._OBSTACLE_SIZE = 50 set in display.py, so here we do a conversion  
+            x_ = (_IMAGE_WIDTH / 2) + delta_x_wrt_height * display._OBSTACLE_SIZE
+        elif obstacle.orientation() == CENTRE:
+            if obstacle.closest_x_to_center > IMAGE_CENTRE:
+                x_ = (_IMAGE_WIDTH / 2) + delta_x_wrt_height * display._OBSTACLE_SIZE
+                x_ -= display._OBSTACLE_SIZE
+            else:
+                x_ = (_IMAGE_WIDTH / 2) - delta_x_wrt_height * display._OBSTACLE_SIZE
+        return x_
+            
