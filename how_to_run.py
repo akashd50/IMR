@@ -99,7 +99,7 @@ def do_robot_stuff(robot, map_helper):
                 rotated_due_to_obstacle = False
             else:
                 # if goal is not visible try rotation by the approximate angle to the goal that we are keeping track of
-                if angle_to_goal > 0:
+                if abs(angle_to_goal) > 0:
                     rotate_z(robot, -angle_to_goal, 1, map_helper)
                     angle_to_goal = 0
         else:
@@ -154,7 +154,7 @@ def find_obstacles_in_collision_range(obstacle_data, rows, cols):
 
         size_threshold = frame_size * max(abs(normalized_x), 0.1) * (1.4 - height_ratio)
         size_threshold_passed = size > size_threshold
-        edge_case_satisfied = (abs(center_normalized_x) > 0.6) & (height_ratio > 0.7)
+        edge_case_satisfied = (abs(center_normalized_x) > 0.8) & (height_ratio > 0.85)
         if size_threshold_passed | edge_case_satisfied:
             obstacle.angle = angle
             obstacle.size_ratio = size_ratio
@@ -188,6 +188,7 @@ def get_angle_to_rotate(obstacle_data):
 def get_angle_to_rotate_multiple(obstacles):
     # Finds the angle to rotate to if there are more than one obstacle in the view
     # for multiple obstacles
+    print (obstacles)
 
     def size_sort(obs):
         return obs.size_ratio

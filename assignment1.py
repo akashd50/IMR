@@ -60,7 +60,7 @@ def photo_mode():
     global DEF_LARGE_VAL
     DEF_LARGE_VAL = 999999
 
-    frame = cv2.imread('test_img16.png', cv2.IMREAD_COLOR)
+    frame = cv2.imread('test_img17.png', cv2.IMREAD_COLOR)
     frame_for_drawing = frame.copy()
 
     # Get the field parameters line the horizon height, and the convex hull of the field
@@ -119,9 +119,9 @@ def find_obstacles(frame, frame_to_draw_on):
             cnt2_height = cnt2[3] - cnt2[1]
             if cnt is not cnt2:
                 height_diff = abs(cnt_height - cnt2_height)
-                height_diff_percent = height_diff/((cnt2_height + cnt_height)/2)
+                height_diff_percent = height_diff/(max(cnt2_height, cnt_height)/2)
                 min_dist = min_dist_bw_contours(cnt, cnt2)
-                if (height_diff_percent < 0.2) & (min_dist < 20):
+                if (height_diff_percent < 0.2) & (min_dist < 30):
                     merged.remove(cnt2)
                     merged2.append(find_smallest_largest_bounds([cnt, cnt2]))
                     has_merged_with_other = True
