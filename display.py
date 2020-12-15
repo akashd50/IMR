@@ -81,6 +81,11 @@ def translate_point(current_location, translation, current_angle):
     x, y = current_location
     pos_x = x + translation_in_pixels * math.cos(adjusted_angle)
     pos_y = y - translation_in_pixels * math.sin(adjusted_angle)
+    # Probably an extra complicated way of ensuring that the value of pos_x and pos_y
+    # stays within the image pixel range. But it works!
+    pos_x = min(max(max(0, pos_x), min(pos_x, _IMAGE_WIDTH)), _IMAGE_WIDTH)
+    pos_y = min(max(max(0, pos_y), min(pos_y, _IMAGE_HEIGHT)), _IMAGE_HEIGHT)
+
     return pos_x, pos_y
 
 
@@ -95,8 +100,12 @@ def draw_obstacle(start, end, img):
             start   : left point
             end     : Right point
     """
-    start, end, top_right, top_left = generate_obstacle_point(start, end)
-    cv2.fillPoly(img, np.array([[start, end, top_right, top_left]]), _RED)
+    # start, end, top_right, top_left = generate_obstacle_point(start, (start[0] + _OBSTACLE_SIZE, start[1] ))
+    cv2.fillPoly(img, np.array([[[start[0] - 25, start[1] - 25],
+                                 [start[0] + 25, start[1] - 25],
+                                 [start[0] + 25, start[1] + 25],
+                                 [start[0] - 25, start[1] + 25]]]), _RED)
+    # cv2.rectangle(img, (start[0] - 25, start[1] - 25), (start[0] + 25, start[1] + 25), (0, 255, 0), 3)
     return img
 
 
