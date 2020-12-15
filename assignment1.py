@@ -118,6 +118,8 @@ def find_obstacles(frame, frame_to_draw_on):
         for cnt2 in merged:
             cnt2_height = cnt2[3] - cnt2[1]
             if cnt is not cnt2:
+                if (cnt2_height == 0) & (cnt_height == 0):
+                    continue
                 height_diff = abs(cnt_height - cnt2_height)
                 height_diff_percent = height_diff/(max(cnt2_height, cnt_height)/2)
                 min_dist = min_dist_bw_contours(cnt, cnt2)

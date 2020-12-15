@@ -50,6 +50,9 @@ def do_robot_stuff(robot, map_helper):
 
         # Find the possible obstacles in range
         obstacles_in_collision_range = find_obstacles_in_collision_range(obstacles, rows, cols)
+        if len(obstacles_in_collision_range) > 0:
+            map_helper.map_obstacles(obstacles_in_collision_range)
+            # print(map_helper.get_horizontal_deflection_from_centre(obstacles_in_collision_range[0]))
 
         num_obs_in_coll_range = len(obstacles_in_collision_range)
 
@@ -102,6 +105,8 @@ def do_robot_stuff(robot, map_helper):
                 if abs(angle_to_goal) > 0:
                     rotate_z(robot, -angle_to_goal, 1, map_helper)
                     angle_to_goal = 0
+                else:
+                    move_forward(robot, 0.25, 1, map_helper)
         else:
             # if goal is visible
             if rotated_due_to_obstacle:
@@ -156,11 +161,12 @@ def find_obstacles_in_collision_range(obstacle_data, rows, cols):
         size_threshold_passed = size > size_threshold
         edge_case_satisfied = (abs(center_normalized_x) > 0.8) & (height_ratio > 0.85)
         if size_threshold_passed | edge_case_satisfied:
-            obstacle.angle = angle
+            obstacle.angle_from_center = center_angle
             obstacle.size_ratio = size_ratio
             obstacle.center_x_nrm = center_normalized_x
             obstacle.closest_x_to_center = closest_x_to_view
             obstacle.closest_x_to_center_nrm = normalized_x
+            obstacle.height_ratio = height_ratio
             obstacles_in_collision_range.append(obstacle)
             if edge_case_satisfied:
                 obstacle.edge_case = True
@@ -341,6 +347,7 @@ class Obstacle:
     area = 0
     width = 0
     height = 0
+    height_ratio = 0.0
     angle_from_center = 0
     size_ratio = 0
     center_x_nrm = 0

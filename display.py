@@ -84,6 +84,23 @@ def translate_point(current_location, translation, current_angle):
     return pos_x, pos_y
 
 
+def find_obstacle_loc(robot_location, distance, current_angle):
+    """
+        Translates the current location in the direction of the current angle
+        by translation amount (scaled appropriately to the correct ratio)
+
+        :param robot_location: (x, y)
+        :param distance: (float) e.g. 0.5, 1
+        :param current_angle: (a) current angle of the robot
+        :return: (x, y)
+    """
+    adjusted_angle = math.radians(current_angle + 90)
+    x, y = robot_location
+    pos_x = x + distance * math.cos(adjusted_angle)
+    pos_y = y - distance * math.sin(adjusted_angle)
+    return pos_x, pos_y
+
+
 if __name__ == '__main__':
     translate_point((150, 300), 1, 0)
 
@@ -95,8 +112,9 @@ def draw_obstacle(start, end, img):
             start   : left point
             end     : Right point
     """
-    start, end, top_right, top_left = generate_obstacle_point(start, end)
-    cv2.fillPoly(img, np.array([[start, end, top_right, top_left]]), _RED)
+    # start, end, top_right, top_left = generate_obstacle_point(start, (start[0] + _OBSTACLE_SIZE, start[1] ))
+    # cv2.fillPoly(img, np.array([[start, end, top_right, top_left]]), _RED)
+    cv2.rectangle(img, (start[0] - 25, start[1] - 25), (start[0] + 25, start[1] + 25), (0, 255, 0), 3)
     return img
 
 
