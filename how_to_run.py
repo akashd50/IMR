@@ -50,7 +50,8 @@ def do_robot_stuff(robot, map_helper):
 
         # Find the possible obstacles in range
         obstacles_in_collision_range = find_obstacles_in_collision_range(obstacles, rows, cols)
-        if len(obstacles_in_collision_range) > 0:
+        if len(obstacles) > 0:
+            # obs_to_map = calc_obstacle_features(obstacles, rows, cols)
             map_helper.map_obstacles(obstacles_in_collision_range)
             # print(map_helper.get_horizontal_deflection_from_centre(obstacles_in_collision_range[0]))
 
@@ -174,6 +175,40 @@ def find_obstacles_in_collision_range(obstacle_data, rows, cols):
     return obstacles_in_collision_range
 
 
+def calc_obstacle_features(obstacle_data, rows, cols):
+    # From the obstacles in the list finds which obstacles can potentially collide with the robot.
+    # Does so using a size threshold which is estimated using the position of the obstacle in
+    # the frame and the height of the obstacle and I take certain percentage of the total frame size as the threshold
+    # depending on the parameters described above
+
+    frame_size = rows * cols
+    obstacles_in_collision_range = []
+    for obstacle in obstacle_data:
+        x = obstacle.center_x
+        y = obstacle.center_y
+        size = obstacle.area
+        width = obstacle.width
+        height = obstacle.height
+
+        size_ratio = float(size) / float(frame_size)
+        height_ratio = float(height) / float(rows)
+        center_normalized_x, center_angle = find_normalized_pos_and_angle(x, y, rows, cols)
+        closest_x_to_view = find_closest_obstacle_x_to_view(obstacle, rows, cols)
+        normalized_x, angle = find_normalized_pos_and_angle(closest_x_to_view, y, rows, cols)
+
+        edge_case_satisfied = (abs(center_normalized_x) > 0.8) & (height_ratio > 0.85)
+        obstacle.angle_from_center = center_angle
+        obstacle.size_ratio = size_ratio
+        obstacle.center_x_nrm = center_normalized_x
+        obstacle.closest_x_to_center = closest_x_to_view
+        obstacle.closest_x_to_center_nrm = normalized_x
+        obstacle.height_ratio = height_ratio
+        obstacles_in_collision_range.append(obstacle)
+        if edge_case_satisfied:
+            obstacle.edge_case = True
+
+    return obstacles_in_collision_range
+
 def get_angle_to_rotate(obstacle_data):
     # Find the anlge of rotation if there's one obstacle in the view
     # for single obstacle
@@ -195,12 +230,14 @@ def get_angle_to_rotate_multiple(obstacles):
     # Finds the angle to rotate to if there are more than one obstacle in the view
     # for multiple obstacles
     print (obstacles)
+    try:
+        def size_sort(obs):
+            return obs.size_ratio
 
-    def size_sort(obs):
-        return obs.size_ratio
-
-    if len(obstacles) > 2:
-        obstacles.sort(size_sort)
+        if len(obstacles) > 2:
+            obstacles.sort(size_sort)
+    finally:
+        print("Exception")
 
     for obs in obstacles:
         if obs.edge_case:

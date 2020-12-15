@@ -1,6 +1,7 @@
 import display
 import cv2
 import math
+import assignment1 as a1
 from MapDisplayThread import MapDisplayThread
 
 
@@ -59,29 +60,58 @@ class MapHelper:
 
     def get_distance(self, dist_func, obstacle):
         """
-        given a obstacle_height returns its distance
-        parameters:
-            obstacle_height: obstacle height
+            given a obstacle_height returns its distance
+            parameters:
+                dist_func: specifies which distance function to use
+                obstacle_height: obstacle height (float or int)
         """
+        distance = 0.0
         if dist_func == 1:
             dist_for_ratio_one = 0.5
             if (abs(obstacle.center_x_nrm) > 0.6) & (obstacle.height_ratio > 0.8):
                 dist_for_ratio_one = 0.7
-            return 2 * (1.0 - obstacle.height_ratio) + dist_for_ratio_one
-        elif dist_func == 2:
-            return 0.7 - obstacle.height_ratio + 1.0
+            if (abs(obstacle.center_x_nrm) > 0.8) & (obstacle.height_ratio > 0.9):
+                dist_for_ratio_one = 0.4
+            distance = 1.6 * (1.0 - obstacle.height_ratio) + dist_for_ratio_one
+        # elif dist_func == 2:
+        #     dist_for_ratio_one = 0.7
+        #     distance = 1.8 * (1.0 - obstacle.height_ratio) + dist_for_ratio_one
+
+        elif dist_func == 3:
+            distance = 0.7 - obstacle.height_ratio + 1.0
+
+        return distance
+
+    def get_angle(self, obstacle):
+        """
+            This function calculate an approximate angle of the obstacle
+            from the robot's current position and orientation
+            :param obstacle: an obstacle object
+            :return: angle (float)
+        """
+        angle_to_obstacle = -(obstacle.center_x_nrm * 45)
+        if (abs(obstacle.center_x_nrm) > 0.6) & (obstacle.height_ratio > 0.8):
+            if angle_to_obstacle < 0:
+                angle_to_obstacle += -10
+            else:
+                angle_to_obstacle += 10
+            if obstacle.width < (0.5 * obstacle.height):
+                if angle_to_obstacle < 0:
+                    angle_to_obstacle += -10
+                else:
+                    angle_to_obstacle += 10
+        return angle_to_obstacle
 
     def map_obstacles(self, obstacles):
+        """
+            This function maps the obstacles on the field
+            :param obstacles: array of Obstacle object
+        """
         for obstacle in obstacles:
             distance = self.get_distance(1, obstacle)
-            # distance2 = self.get_distance(2, obstacle)
-            angle_to_obstacle = -(obstacle.center_x_nrm * 45)
-            if (abs(obstacle.center_x_nrm) > 0.7) & (obstacle.height_ratio > 0.8):
-                angle_to_obstacle += 10
-            x, y = display.translate_point(self.robot_translation, distance,
-                                           self.robot_rotation + angle_to_obstacle)
-            # x2, y2 = display.translate_point(self.robot_translation, distance2, self.robot_rotation + angle_to_obstacle)
-            # new_obs_data = ObstacleObservationData(int((x + x2) / 2), int((y + y2) / 2), 0)
+            angle_to_obstacle = self.get_angle(obstacle)
+            x, y = display.translate_point(self.robot_translation, distance, self.robot_rotation + angle_to_obstacle)
+
             new_obs_data = ObstacleObservationData(int(x), int(y), 1.0, obstacle.size_ratio)
             new_obs_data.max_size_ratio = obstacle.size_ratio
 
@@ -101,7 +131,10 @@ class MapHelper:
 
 
 class ObstacleObservationData:
-
+    """
+    Represents the data interpreted from the image by the system. This is to organize the position and weights of the
+    predicted "particle" on the map.
+    """
     def __init__(self, cx, cy, weight, size_rat):
         self.center_x = cx
         self.center_y = cy
@@ -111,6 +144,10 @@ class ObstacleObservationData:
         self.probability = 0.0
 
     def check_intersection(self, obsObvData):
+        """
+            :param obsObvData: ObstacleObservationData Object
+            :return: boolean - Checks to see if two rectangles overlap
+        """
         # checks to see if this obstacle rectangle overlaps with another one
         l1x, l1y, r1x, r1y = self.center_x - 25, self.center_y - 25, self.center_x + 25, self.center_y + 25
         l2x, l2y, r2x, r2y = obsObvData.center_x - 25, obsObvData.center_y - 25, obsObvData.center_x + 25, obsObvData.center_y + 25
@@ -123,11 +160,13 @@ class ObstacleObservationData:
         return True
 
     def merge_two_obstacles(self, obsObvData):
+        """
+            :param - obsObvData - ObstacleObservationData Object
+            Merges two obstacles into one. It uses assigned weights to decide how much the merged position
+            affects the actual position/rotation of the obstacle on the map
+        """
         x_diff = self.center_x - obsObvData.center_x
         y_diff = self.center_y - obsObvData.center_y
-        # ratio_to_use = obsObvData.size_ratio/self.max_size_ratio
+        ratio_to_use = obsObvData.size_ratio/self.max_size_ratio
         self.center_x = self.center_x - int(float(x_diff) * obsObvData.size_ratio)
         self.center_y = self.center_y - int(float(y_diff) * obsObvData.size_ratio)
-
-        # self.center_x = (self.center_x + obsObvData.center_x) / 2
-        # self.center_y = (self.center_y + obsObvData.center_y) / 2
