@@ -9,9 +9,8 @@ def main():
     print(cv2.__version__)
     cv2.namedWindow("frame")
     cv2.setMouseCallback("frame", mouse_callback)
-    global DEF_LARGE_VAL
-    DEF_LARGE_VAL = 999999
     photo_mode()
+    # video()
 
 
 # Simple callback for getting the coordinates
@@ -20,11 +19,48 @@ def mouse_callback(event, x, y, flags, param):
         print(x, y)
 
 
+def video():
+    cap = cv2.VideoCapture('turtlebot.avi')
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if ret:
+            frame_for_drawing = frame.copy()
+            # Get the field parameters line the horizon height, and the convex hull of the field
+            # horizon_height, outer_field_edges = do_field_ops(frame)
+
+            #  Do Obstacle Detection. positional_data_obstacles contains the position and size of obstacles
+            positional_data_obstacles, obstacle_contours = find_obstacles(frame, frame_for_drawing)
+
+            # find blue goal
+            pos_x_blue, pos_y_blue, area = find_goal(frame, np.asarray([100, 180, 180]), np.asarray([130, 255, 255]),
+                                                     frame_for_drawing)
+
+            # find yellow goal
+            pos_x_yellow, pos_y_yellow, area = find_goal(frame, np.asarray([10, 80, 230]), np.asarray([40, 180, 255]),
+                                                         frame_for_drawing)
+
+            # Do line detection
+            # frame_for_drawing = draw_field(frame, obstacle_contours, horizon_height, outer_field_edges, frame_for_drawing)
+
+            # for line in outer_field_edges:
+            #     cv2.line(frame_for_drawing, (line[0], line[1]), (line[2], line[3]), (30, 30, 90), 4)
+
+            cv2.imshow('frame', frame_for_drawing)
+            key = cv2.waitKey(1)
+            if key == 27:  # Press ESC to exit
+                break
+        else:
+            print("Fail to open camera")
+            break
+    cap.release()
+    cv2.destroyAllWindows()
+
 def photo_mode():
     global DEF_LARGE_VAL
     DEF_LARGE_VAL = 999999
 
-    frame = cv2.imread('test_img1.png', cv2.IMREAD_COLOR)
+    frame = cv2.imread('test_img17.png', cv2.IMREAD_COLOR)
     frame_for_drawing = frame.copy()
 
     # Get the field parameters line the horizon height, and the convex hull of the field
@@ -54,13 +90,71 @@ def find_obstacles(frame, frame_to_draw_on):
     frame_wo_back = remove_background(frame)
     frame_hsv = cv2.cvtColor(frame_wo_back, cv2.COLOR_BGR2HSV)
 
+    # white
+    mask_white = cv2.inRange(frame_hsv, np.asarray([0, 0, 120]), np.asarray([255, 10, 255]))
+    mask_white = apply_erosion(mask_white, 15)
+    mask_white = apply_erosion(mask_white, 5)
+    mask_white = apply_closing(mask_white, 5)
+
     # red
-    mask_red = cv2.inRange(frame_hsv, np.asarray([170, 120, 80]), np.asarray([180, 255, 255]))
-    mask_red = apply_dilation(mask_red, 3)
+    mask_red = cv2.inRange(frame_hsv, np.asarray([160, 120, 100]), np.asarray([180, 255, 255]))
+    mask_red = apply_erosion(mask_red, 5)
     mask_red = apply_closing(mask_red, 5)
 
     cnt_list_red = get_contour_bounds(get_contours_list(mask_red))
-    merged = merge_overlapping_contours(cnt_list_red)
+    cnt_list_white = get_contour_bounds(get_contours_list(mask_white))
+
+    cnt_list_red = group_by_proximity_and_scale(cnt_list_red)
+    merged = []
+    for cnt in cnt_list_red:
+        merged.append(find_smallest_largest_bounds(cnt))
+    merged = merge_overlapping_contours(merged)
+
+    merged2 = []
+    # Merges contours of similar height, usually for cases where the camera is seeing two sides of the obstacles
+    for cnt in merged:
+        cnt_height = cnt[3] - cnt[1]
+        has_merged_with_other = False
+        for cnt2 in merged:
+            cnt2_height = cnt2[3] - cnt2[1]
+            if cnt is not cnt2:
+                if (cnt2_height == 0) & (cnt_height == 0):
+                    continue
+                height_diff = abs(cnt_height - cnt2_height)
+                height_diff_percent = height_diff/(max(cnt2_height, cnt_height)/2)
+                min_dist = min_dist_bw_contours(cnt, cnt2)
+                if (height_diff_percent < 0.2) & (min_dist < 30):
+                    merged.remove(cnt2)
+                    merged2.append(find_smallest_largest_bounds([cnt, cnt2]))
+                    has_merged_with_other = True
+        if not has_merged_with_other:
+            merged2.append(cnt)
+
+    # merge overlapping red contours with white
+    # Try merging the white or other obstacle contours along the same y axis into one..
+    merged = merged2
+
+    merged_contours = []
+    # Merges white contours with red contours to handle cases where just a single column of obstacle in in view.
+    for red_cnt in merged:
+        loc_cnt_list = [red_cnt]
+        for white_cnt in cnt_list_white:
+            if check_overlap(red_cnt, white_cnt, 0):
+                loc_cnt_list.append(white_cnt)
+            else:
+                rsx, rsy, rex, rey = red_cnt
+                r_height = rey - rsy
+                sx, sy, ex, ey = white_cnt
+                center_x = (sx + ex)/2
+                if (rsx <= center_x <= rex) & (min_dist_bw_contours(red_cnt, white_cnt) < r_height/2):
+                    loc_cnt_list.append(white_cnt)
+        merged_contours.append(loc_cnt_list)
+
+    merged = []
+    for c_group in merged_contours:
+        merged.append(find_smallest_largest_bounds(c_group))
+
+    merged = merge_overlapping_contours(merged)
 
     # Draw the obstacle boxes and extract the data to return
     positional_data_to_return = []
@@ -78,12 +172,38 @@ def find_obstacles(frame, frame_to_draw_on):
     return positional_data_to_return, merged
 
 
-def is_approx_square(sx, sy, ex, ey):
+def min_dist_bw_contours(c1, c2):
+    sx1, sy1, ex1, ey1 = c1
+    sx2, sy2, ex2, ey2 = c2
+
+    dist_to_sx2_sy2 = min(get_distance((sx1, sy1), (sx2, sy2)),
+                          get_distance((sx1, ey1), (sx2, sy2)),
+                          get_distance((ex1, sy1), (sx2, sy2)),
+                          get_distance((ex1, ey1), (sx2, sy2)))
+    dist_to_ex2_ey2 = min(get_distance((sx1, sy1), (ex2, ey2)),
+                          get_distance((sx1, ey1), (ex2, ey2)),
+                          get_distance((ex1, sy1), (ex2, ey2)),
+                          get_distance((ex1, ey1), (ex2, ey2)))
+
+    dist_to_sx1_sy1 = min(get_distance((sx2, sy2), (sx1, sy1)),
+                          get_distance((sx2, ey2), (sx1, sy1)),
+                          get_distance((ex2, sy2), (sx1, sy1)),
+                          get_distance((ex2, ey2), (sx1, sy1)))
+
+    dist_to_ex1_ey1 = min(get_distance((sx2, sy2), (ex1, ey1)),
+                          get_distance((sx2, ey2), (ex1, ey1)),
+                          get_distance((ex2, sy2), (ex1, ey1)),
+                          get_distance((ex2, ey2), (ex1, ey1)))
+
+    return min(dist_to_ex2_ey2, dist_to_sx2_sy2, dist_to_sx1_sy1, dist_to_ex1_ey1)
+
+
+def is_approx_square(sx, sy, ex, ey, dist):
     # Checks to see if the 4 points approximately make a square. Used to detect white squares for obstacles
     width = ex - sx
     height = ey - sy
     to_ret = False
-    error = 0.2
+    error = 0.5 + (0.4/(1.0 + dist*0.5))
     h_error = height * error
     w_error = width * error
     if (height - h_error < width < height + h_error) | (width - w_error < height < width + w_error):
@@ -241,6 +361,18 @@ def extract_field_coordinates(approx_coords):
 
 
 def draw_field(frame, obstacle_contours, horizon_height, outer_field_edges, frame_for_drawing):
+    """
+        return
+            :frame_for_drawing - image with lines drawn
+            :(each line represented by [start_x, start_y, end_x, end_y])
+            :goal_lines - list of goal lines
+            :outer_field_lines - list of outer field lines (different from the args: outer_field_edges)
+            :mid_lines - list of possible mid-lines
+            :grouped_lines - list of all other unclassified lines
+    """
+    global DEF_LARGE_VAL
+    DEF_LARGE_VAL = 999999
+
     rows, cols, channels = frame.shape
     fld = cv2.ximgproc.createFastLineDetector()
 
@@ -307,7 +439,7 @@ def draw_field(frame, obstacle_contours, horizon_height, outer_field_edges, fram
         sx, sy, ex, ey = line
         cv2.line(frame_for_drawing, (int(sx), int(sy)), (int(ex), int(ey)), curr_color, 2)
 
-    return frame_for_drawing
+    return frame_for_drawing, [goal_line1, goal_line2], outer_field_lines, mid_lines, grouped_lines
 
 
 def find_goal_lines(lines_list, horizon, rows):
@@ -354,6 +486,9 @@ def find_outer_field_lines_v2(lines_list, frame_wo_back, outer_field_edges, hori
     outer_field_lines = []
     mid_line_candidates = []
     calculated_field_center = [0, 0]
+    if outer_field_edges is None:
+        return
+
     for line in outer_field_edges:
         calculated_field_center[0] += line[0]
         calculated_field_center[0] += line[2]
@@ -438,7 +573,13 @@ def has_other_lines_close_by(curr_line, lines_list):
 
 
 def try_and_find_mid_line(outer_line, lines_list):
-    lines_list_copy = lines_list.copy()
+    if lines_list is None:
+        return
+    # lines_list_copy = lines_list.copy()
+    lines_list_copy = []
+    for copy in lines_list:
+        lines_list_copy.append(copy)
+
     lower_bound = 20
     upper_bound = 160
     # for outer_line in outer_lines:
@@ -498,6 +639,8 @@ def merge_lines_by_slope(lines_list, angle_threshold, distance_threshold):
             if compare_angle_to_both_points(current_seg, closest_line, 8) & (line_dist < distance_threshold):
                 closest_point_pos, dist = find_closest_point_in_lines(vec_pos, [current_seg, closest_line])
                 closest_point_neg, dist = find_closest_point_in_lines(vec_neg, [current_seg, closest_line])
+                if (closest_point_neg is None) | (closest_point_pos is None):
+                    continue
                 new_line = [closest_point_pos[0], closest_point_pos[1], closest_point_neg[0], closest_point_neg[1]]
                 newly_created_lines.append(new_line)
 
@@ -848,14 +991,27 @@ def group_by_proximity_and_scale(contours_list):
                 c_wid = cr - cl
                 c_hei = cb - ct
 
-                merging_length = max((f_wid + c_wid)/2, (f_hei + c_hei)/2)
+                # merging_length = max((f_wid + c_wid)/2, (f_hei + c_hei)/2)
+                merging_length = (max(f_wid, f_hei) + max(c_hei, c_wid)) * 0.6
 
-                distance = math.sqrt(((left - cl) ** 2) + ((top - ct) ** 2))
-                re_merging_len = merging_length * 2 + 10
-                is_bw_scale_hor = f_wid - 5 <= c_wid <= f_wid + 5
-                is_bw_scale_ver = f_hei - 5 <= c_hei <= f_hei + 5
-                is_in_ball_park_of_first = (first_wid - 10 <= c_wid <= first_wid + 10) | (first_hei - 10 <= c_hei <= first_hei + 10)
-                if (distance <= re_merging_len) & (is_bw_scale_hor | is_bw_scale_ver) & is_in_ball_park_of_first:
+                # distance = math.sqrt(((left - cl) ** 2) + ((top - ct) ** 2))
+                distance = min_dist_bw_contours(final_cnt, cnt)
+
+                re_merging_len = merging_length + 5
+                # normal_comparison_error = 50
+                normal_comparison_error = max(f_wid, f_hei)*0.5
+
+                is_bw_scale_hor = f_wid - normal_comparison_error <= c_wid <= f_wid + normal_comparison_error
+                is_bw_scale_ver = f_hei - normal_comparison_error <= c_hei <= f_hei + normal_comparison_error
+                first_comparison_error = 25
+                # is_in_ball_park_of_first = (first_wid - first_comparison_error <= c_wid <= first_wid + first_comparison_error) \
+                #                            | (first_hei - first_comparison_error <= c_hei <= first_hei + first_comparison_error)
+
+                # min_parent = min(first_hei, first_wid)
+                # min_curr = min(c_hei, c_wid)
+                # is_in_ball_park_of_first = (min_parent - first_comparison_error <= min_curr <= min_parent + first_comparison_error)
+                # if (distance <= re_merging_len) & (is_bw_scale_hor | is_bw_scale_ver) & is_in_ball_park_of_first:
+                if (distance <= re_merging_len) & (is_bw_scale_hor & is_bw_scale_ver):
                     final_cnt_list.append(cnt)
                     contours_list.remove(cnt)
 
@@ -908,7 +1064,7 @@ def merge_overlapping_contours(contours_list):
         loop_list = [contours_list[0]]
         for cnt in loop_list:
             for loc_cnt in contours_list:
-                if (loc_cnt not in loop_list) & check_overlap(cnt, loc_cnt):
+                if (loc_cnt not in loop_list) & check_overlap(cnt, loc_cnt, 10):
                     loop_list.append(loc_cnt)
         merged_contours.append(loop_list)
         contours_list = [elem for elem in contours_list if elem not in loop_list]
@@ -1059,15 +1215,15 @@ def get_min_distance_to_line(point, segment):
     return closest_point, get_distance(closest_point, point), is_point_within_line_bounds
 
 
-def check_overlap(region1, region2):
+def check_overlap(region1, region2, threshold_error):
     # checks to see if two rectangles overlap
     l1x, l1y, r1x, r1y = region1
     l2x, l2y, r2x, r2y = region2
 
-    if (l1x >= (r2x-10)) or (l2x >= (r1x-10)):
+    if (l1x >= (r2x-threshold_error)) or (l2x >= (r1x-threshold_error)):
         return False
 
-    if (l1y >= (r2y-10)) or (l2y >= (r1y-10)):
+    if (l1y >= (r2y-threshold_error)) or (l2y >= (r1y-threshold_error)):
         return False
     return True
 

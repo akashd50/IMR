@@ -7,18 +7,21 @@ import cv2
 from robot import Robot
 import assignment1 as a1
 import numpy as np
-import time
-import threading
+from MapHelper import MapHelper
 
 
 def Run(robot):
-    # Get image and save image
-    do_robot_stuff(robot)
+    # Open the map image and create a new thread for display
+    map_helper = MapHelper()
+    # defaulting the translation for now
+    map_helper.set_robot_translation((150, 600))
+    map_helper.refresh_map()
+    do_robot_stuff(robot, map_helper)
 
 
-def do_robot_stuff(robot):
-    global DEF_LARGE_VAL
-    DEF_LARGE_VAL = 999999
+def do_robot_stuff(robot, map_helper):
+    # global DEF_LARGE_VAL
+    # DEF_LARGE_VAL = 999999
 
     angle_to_goal = 0
     rotated_due_to_obstacle = False
@@ -29,11 +32,9 @@ def do_robot_stuff(robot):
     image = robot.get_image()
     frame_height, frame_width, _ = image.shape
     # Video writer for debugging
-    # out = cv2.VideoWriter('outpy.avi', cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 4, (frame_width, frame_height))
+    out = cv2.VideoWriter('outpy.avi', cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 4, (frame_width, frame_height))
     while True:
-        # rotate the bot in the direction of goal
-
-        # find obstacles in current direction
+        # get the image from the robot
         image = robot.get_image()
 
         # pass the image to extract the obstacle and goal data
@@ -49,6 +50,10 @@ def do_robot_stuff(robot):
 
         # Find the possible obstacles in range
         obstacles_in_collision_range = find_obstacles_in_collision_range(obstacles, rows, cols)
+        if len(obstacles) > 0:
+            # obs_to_map = calc_obstacle_features(obstacles, rows, cols)
+            map_helper.map_obstacles(obstacles_in_collision_range)
+            # print(map_helper.get_horizontal_deflection_from_centre(obstacles_in_collision_range[0]))
 
         num_obs_in_coll_range = len(obstacles_in_collision_range)
 
@@ -62,57 +67,56 @@ def do_robot_stuff(robot):
                 if (abs(current_obstacle.closest_x_to_center_nrm) > 0.8) & (current_obstacle.size_ratio < 0.2):
                     # check if there's enough space to pass through
                     # move straight
-                    move_forward(robot, 0.2, 1)
+                    move_forward(robot, 0.2, 1, map_helper)
                 else:
                     # otherwise keep rotating in the same direction
                     angle_to_rotate = rotated_due_to_obstacle_dir * 10
-                    rotate_z(robot, angle_to_rotate, 1)
-                    angle_to_goal += angle_to_rotate + (angle_to_rotate * 0.1)
+                    rotate_z(robot, angle_to_rotate, 1, map_helper)
+                    angle_to_goal += angle_to_rotate
             else:
                 # otherwise find the angle of rotation for the current obstacle and rotate the robot
                 angle_to_rotate = get_angle_to_rotate(current_obstacle)
-                rotate_z(robot, angle_to_rotate, 1)
-                angle_to_goal += angle_to_rotate + (angle_to_rotate * 0.1)
+                rotate_z(robot, angle_to_rotate, 1, map_helper)
+                angle_to_goal += angle_to_rotate
                 rotated_due_to_obstacle = True
-                rotated_due_to_obstacle_dir = angle_to_rotate/abs(angle_to_rotate)
+                rotated_due_to_obstacle_dir = angle_to_rotate / abs(angle_to_rotate)
 
             # If we ever see a potential collide-able obstacle in the current iteration,
             # we always skip the entire rest of loop
             continue
         elif num_obs_in_coll_range >= 2:
             angle_to_rotate = get_angle_to_rotate_multiple(obstacles_in_collision_range)
-            rotate_z(robot, angle_to_rotate, 1)
-            angle_to_goal += angle_to_rotate + (angle_to_rotate * 0.1)
+            rotate_z(robot, angle_to_rotate, 1, map_helper)
+            angle_to_goal += angle_to_rotate
             rotated_due_to_obstacle = True
             rotated_due_to_obstacle_dir = angle_to_rotate / abs(angle_to_rotate)
             continue
 
         # correct direction
-        # print("Goal Data: ", blue_goal_data)
         if not is_goal_visible:
             # cant find goal
 
             if rotated_due_to_obstacle:
                 # if the robot previously rotated due to an obstacle and there's no obstacle in the path,
                 # move forward first
-                move_forward(robot, 0.5, 1)
+                move_forward(robot, 0.5, 1, map_helper)
                 rotated_due_to_obstacle = False
             else:
-                # else continue rotating to find the goal
-                rotate_z(robot, 40, 1)
-                angle_to_goal += 40 + 40 * 0.1
+                # if goal is not visible try rotation by the approximate angle to the goal that we are keeping track of
+                if abs(angle_to_goal) > 0:
+                    rotate_z(robot, -angle_to_goal, 1, map_helper)
+                    angle_to_goal = 0
+                else:
+                    move_forward(robot, 0.25, 1, map_helper)
         else:
             # if goal is visible
-
             if rotated_due_to_obstacle:
                 # if the robot previously rotated due to an obstacle and there's no obstacle in the path,
                 # move forward first
-
-                move_forward(robot, 0.2, 1)
+                move_forward(robot, 0.2, 1, map_helper)
                 rotated_due_to_obstacle = False
             else:
                 # else correct the direction to the goal or move forward
-
                 bottom = [float(cols) / 2, rows]
                 vec_to_goal = [goal_x - bottom[0], abs(goal_y - bottom[1])]
                 normalized_vec = a1.normalize(vec_to_goal)
@@ -121,17 +125,16 @@ def do_robot_stuff(robot):
                 # if the angle to goal is between 10 degrees move forward otherwise correct direction and continue
                 if abs(r_angle) > 5:
                     angle_to_rotate = r_angle
-                    rotate_z(robot, angle_to_rotate * 0.8, 1)
-                    angle_to_goal += angle_to_rotate * 0.8 + (angle_to_rotate * 0.8) * 0.1
+                    rotate_z(robot, angle_to_rotate * 0.8, 1, map_helper)
+                    angle_to_goal += angle_to_rotate * 0.8
                 else:
-                    move_forward(robot, 0.2, 1)
+                    move_forward(robot, 0.2, 1, map_helper)
 
-        # out.write(frame_for_drawing)
+        out.write(frame_for_drawing)
 
-    # out.release()
+    out.release()
     # print("Angle to goal: ", angle_to_goal)
     # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
 
 
 def find_obstacles_in_collision_range(obstacle_data, rows, cols):
@@ -150,24 +153,61 @@ def find_obstacles_in_collision_range(obstacle_data, rows, cols):
         height = obstacle.height
 
         size_ratio = float(size) / float(frame_size)
-        height_ratio = float(height)/float(rows)
+        height_ratio = float(height) / float(rows)
         center_normalized_x, center_angle = find_normalized_pos_and_angle(x, y, rows, cols)
         closest_x_to_view = find_closest_obstacle_x_to_view(obstacle, rows, cols)
         normalized_x, angle = find_normalized_pos_and_angle(closest_x_to_view, y, rows, cols)
 
-        size_threshold = frame_size * max(abs(normalized_x), 0.1) * (1.6 - height_ratio)
+        size_threshold = frame_size * max(abs(normalized_x), 0.1) * (1.4 - height_ratio)
         size_threshold_passed = size > size_threshold
-
-        if size_threshold_passed:
-            obstacle.angle = angle
+        edge_case_satisfied = (abs(center_normalized_x) > 0.8) & (height_ratio > 0.85)
+        if size_threshold_passed | edge_case_satisfied:
+            obstacle.angle_from_center = center_angle
             obstacle.size_ratio = size_ratio
             obstacle.center_x_nrm = center_normalized_x
             obstacle.closest_x_to_center = closest_x_to_view
             obstacle.closest_x_to_center_nrm = normalized_x
+            obstacle.height_ratio = height_ratio
             obstacles_in_collision_range.append(obstacle)
+            if edge_case_satisfied:
+                obstacle.edge_case = True
 
     return obstacles_in_collision_range
 
+
+def calc_obstacle_features(obstacle_data, rows, cols):
+    # From the obstacles in the list finds which obstacles can potentially collide with the robot.
+    # Does so using a size threshold which is estimated using the position of the obstacle in
+    # the frame and the height of the obstacle and I take certain percentage of the total frame size as the threshold
+    # depending on the parameters described above
+
+    frame_size = rows * cols
+    obstacles_in_collision_range = []
+    for obstacle in obstacle_data:
+        x = obstacle.center_x
+        y = obstacle.center_y
+        size = obstacle.area
+        width = obstacle.width
+        height = obstacle.height
+
+        size_ratio = float(size) / float(frame_size)
+        height_ratio = float(height) / float(rows)
+        center_normalized_x, center_angle = find_normalized_pos_and_angle(x, y, rows, cols)
+        closest_x_to_view = find_closest_obstacle_x_to_view(obstacle, rows, cols)
+        normalized_x, angle = find_normalized_pos_and_angle(closest_x_to_view, y, rows, cols)
+
+        edge_case_satisfied = (abs(center_normalized_x) > 0.8) & (height_ratio > 0.85)
+        obstacle.angle_from_center = center_angle
+        obstacle.size_ratio = size_ratio
+        obstacle.center_x_nrm = center_normalized_x
+        obstacle.closest_x_to_center = closest_x_to_view
+        obstacle.closest_x_to_center_nrm = normalized_x
+        obstacle.height_ratio = height_ratio
+        obstacles_in_collision_range.append(obstacle)
+        if edge_case_satisfied:
+            obstacle.edge_case = True
+
+    return obstacles_in_collision_range
 
 def get_angle_to_rotate(obstacle_data):
     # Find the anlge of rotation if there's one obstacle in the view
@@ -176,6 +216,9 @@ def get_angle_to_rotate(obstacle_data):
     additional_angle_offset = 0
     if (abs(obstacle_data.size_ratio) > 0.25) & (abs(obstacle_data.center_x_nrm) > 0.6):
         additional_angle_offset = 20
+
+    if obstacle_data.edge_case:
+        additional_angle_offset = 10
 
     if obstacle_data.center_x_nrm > 0:
         return 10 + additional_angle_offset
@@ -186,12 +229,19 @@ def get_angle_to_rotate(obstacle_data):
 def get_angle_to_rotate_multiple(obstacles):
     # Finds the angle to rotate to if there are more than one obstacle in the view
     # for multiple obstacles
+    print (obstacles)
+    try:
+        def size_sort(obs):
+            return obs.size_ratio
 
-    def size_sort(obs):
-        return obs.size_ratio
+        if len(obstacles) > 2:
+            obstacles.sort(size_sort)
+    finally:
+        print("Exception")
 
-    if len(obstacles) > 2:
-        obstacles.sort(size_sort)
+    for obs in obstacles:
+        if obs.edge_case:
+            return get_angle_to_rotate(obs)
 
     obs1 = obstacles[0]
     obs2 = obstacles[1]
@@ -225,26 +275,49 @@ def find_normalized_pos_and_angle(x, y, rows, cols):
     return normalized_x, angle
 
 
-def rotate_z(robot, deg_per_sec, seconds):
+def rotate_z(robot, deg_per_sec, seconds, map_helper):
     # helper function for rotating the robot forward
     rate = rospy.Rate(10)
     twist = Twist()
     twist.angular.z = radians(deg_per_sec)
     iter_time = 10 * seconds
+    total_rotation = deg_per_sec * seconds
+    rot_per_iter = total_rotation/iter_time
     for i in xrange(0, iter_time):
         robot.publish_twist(twist)
+
+        # update map
+        map_helper.update_robot_rotation(rot_per_iter)
+        map_helper.refresh_map()
+
         rate.sleep()
 
+    # instantly stops rotation as soon as the loop finishes
+    # this allows to avoid the discrepancies in extra rotation
+    twist.angular.z = 0
+    robot.publish_twist(twist)
 
-def move_forward(robot, meters_per_sec, seconds):
+
+def move_forward(robot, meters_per_sec, seconds, map_helper):
     # helper function for moving the robot forward
     rate = rospy.Rate(10)
     twist = Twist()
     twist.linear.x = meters_per_sec
     iter_time = 10 * seconds
+    total_translation = meters_per_sec * seconds
+    translation_per_iter = total_translation/iter_time
     for i in xrange(0, iter_time):
         robot.publish_twist(twist)
+
+        # update map
+        map_helper.translate_robot(translation_per_iter)
+        map_helper.refresh_map()
+
         rate.sleep()
+
+    # instantly stops translation as soon as the loop finishes
+    twist.linear.x = 0
+    robot.publish_twist(twist)
 
 
 def photo_mode(image):
@@ -273,7 +346,8 @@ def photo_mode(image):
 
     # Not Doing line detection since we don't need it for this assignment
 
-    # frame_for_drawing = draw_field(frame, obstacle_contours, horizon_height, outer_field_edges, frame_for_drawing)
+    frame_for_drawing, goal_lines, outer_lines, mid_lines, unclassified_lines = a1.draw_field(frame, obstacle_contours, horizon_height, outer_field_edges, frame_for_drawing)
+
     return frame_for_drawing, obstacle_objects, [pos_x_blue, pos_y_blue, blue_area]
 
 
@@ -310,6 +384,7 @@ class Obstacle:
     area = 0
     width = 0
     height = 0
+    height_ratio = 0.0
     angle_from_center = 0
     size_ratio = 0
     center_x_nrm = 0
@@ -318,9 +393,9 @@ class Obstacle:
 
     def __init__(self, position_data):
         self.center_x, self.center_y, self.area, self.width, self.height = position_data
+        self.edge_case = False
 
 
 if __name__ == '__main__':
     robot = Robot()
     Run(robot)
-
